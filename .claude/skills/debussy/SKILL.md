@@ -65,7 +65,7 @@ updates will show up live in the browser after step 6.
 | `debussy chords FILE [--measures A-B] [--per-measure]` | chord-by-chord Roman numerals and pitched names |
 | `debussy progression FILE` | one-line Roman numeral progression (4 measures per row) |
 
-### Edit ops (mutate the file in place, or `--out` to write elsewhere)
+### Note-level edit ops (mutate the file in place, or `--out` to write elsewhere)
 
 | command | what it does |
 |---|---|
@@ -77,12 +77,37 @@ updates will show up live in the browser after step 6.
 | `debussy delete-measures FILE --range A-B` | delete a measure range from every part |
 | `debussy apply FILE SCRIPT.py` | escape hatch: run an arbitrary music21 python snippet with `score` in scope. Use for ops the CLI doesn't cover. |
 
+### Vibe edits (expressive markings — don't change pitches)
+
+| command | what it does |
+|---|---|
+| `debussy dynamic FILE --measure N --beat B --marking p` | insert a dynamic like `pp p mp mf f ff fff fp sf sfz` |
+| `debussy articulation FILE --measure N --beat B --kind staccato` | attach `staccato / staccatissimo / accent / marcato / tenuto / fermata / stress / detachedlegato` to the note at a beat |
+| `debussy tempo FILE --measure N [--bpm 96] [--text "Andante"]` | set a tempo / metronome mark at the start of a measure |
+| `debussy text FILE --measure N --beat B --text "rit."` | add a free-form text expression (rit., dolce, espr., …) |
+| `debussy slur FILE --from-measure M1 --from-beat B1 --to-measure M2 --to-beat B2` | draw a slur between two notes |
+| `debussy hairpin FILE --kind cresc\|dim --from-measure M1 --from-beat B1 --to-measure M2 --to-beat B2` | crescendo / diminuendo hairpin between two notes |
+
+### Lyrics
+
+| command | what it does |
+|---|---|
+| `debussy lyrics FILE --measures A-B --text "word1 word2 Hal-le-lu-jah"` | attach words as syllables to successive notes. Spaces separate words; hyphens split a word across notes; melismatic holds are skipped (no new syllable). Use `--verse N` for multi-verse lyrics. |
+| `debussy clear-lyrics FILE --measures A-B [--verse N]` | remove lyrics from a range (all verses by default) |
+
+### Import / transcribe
+
+| command | what it does |
+|---|---|
+| `debussy import FILE` | convert MIDI (.mid/.midi), ABC (.abc), Humdrum/kern (.krn), or MEI (.mei) → MusicXML. Use this when the user drops any non-MusicXML music file in the project. |
+| `debussy transcribe FILE.wav` | audio → MusicXML via Spotify's basic-pitch. Requires `pip install 'debussy[transcribe]'` (pulls tensorflow). If not installed, the command prints an install hint instead of failing. Use sparingly. |
+
 ### Render & preview
 
 | command | what it does |
 |---|---|
-| `debussy render FILE --format midi\|musicxml\|pdf\|png\|lily [--out OUT]` | write the score in the requested format. PDF/PNG need `lilypond` or `musescore` installed; otherwise the tool will tell you and suggest `preview`. |
-| `debussy preview FILE [--port 8765]` | start a local live-reload HTTP server that renders the score in the browser using Verovio (from CDN, no install). Auto-reloads whenever the file changes on disk. |
+| `debussy render FILE --format midi\|musicxml\|pdf\|png\|svg\|lily [--out OUT]` | write the score in the requested format. PDF/PNG/SVG are rendered by the bundled Verovio Python binding (no external tools required). `lily` still needs `lilypond` on PATH. |
+| `debussy preview FILE [--port 8765]` | start a local live-reload HTTP server with a Verovio-rendered score, MIDI playback, zoom, and a "Save as PDF" button. Auto-reloads whenever any `debussy` op touches the file. Opens the browser automatically. |
 
 ## The digest format
 
@@ -130,6 +155,26 @@ debussy replace-measure score.musicxml --measure 5 \
 **Transpose a range** (e.g. move the bridge down a fifth):
 ```
 debussy transpose score.musicxml --interval -P5 --measures 17-24
+```
+
+**Expressive markings** — the vibe-edit ops don't change pitches, they shape
+how the piece feels:
+```
+debussy dynamic score.musicxml --measure 1 --beat 1 --marking p
+debussy dynamic score.musicxml --measure 9 --beat 1 --marking mf
+debussy hairpin score.musicxml --kind cresc \
+    --from-measure 5 --from-beat 1 --to-measure 8 --to-beat 4
+debussy text score.musicxml --measure 16 --beat 3 --text "rit."
+debussy articulation score.musicxml --measure 1 --beat 1 --kind staccato
+debussy slur score.musicxml \
+    --from-measure 1 --from-beat 1 --to-measure 1 --to-beat 4
+debussy tempo score.musicxml --measure 1 --bpm 84 --text "Andante"
+```
+
+**Lyrics** — spaces separate words, hyphens split words across notes:
+```
+debussy lyrics score.musicxml --measures 1-4 \
+    --text "Twin-kle twin-kle lit-tle star"
 ```
 
 **Anything more complex** — use the `apply` escape hatch with a music21 snippet:

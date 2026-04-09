@@ -4,11 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "debussy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agentic harness for Claude Code to read, reason about, edit, and render MusicXML scores."
 requires-python = ">=3.10"
 dependencies = [
     "music21>=9.0",
+    "verovio>=4.0",
+    "cairosvg>=2.7",
+    "pypdf>=4.0",
+]
+
+[project.optional-dependencies]
+transcribe = [
+    # Audio -> MIDI transcription. basic-pitch pulls in tensorflow, which is
+    # heavy; keep it opt-in so the base install stays light.
+    "basic-pitch",
 ]
 
 [project.scripts]

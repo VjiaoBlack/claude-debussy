@@ -19,33 +19,33 @@
     </scaling>
   </defaults>
   <part-list>
-    <score-part id="P43249ce2e8bf8050aa70ea257d71154b">
+    <score-part id="P463ed44d4b2e5457db4e607ea5eec385">
       <part-name>Melody</part-name>
       <part-abbreviation>Pno</part-abbreviation>
-      <score-instrument id="I174d70fed9184c15f938860bbf2b19b4">
+      <score-instrument id="I72d8b4e5f64604f1d66706fe62da3258">
         <instrument-name>Piano</instrument-name>
         <instrument-abbreviation>Pno</instrument-abbreviation>
       </score-instrument>
-      <midi-instrument id="I174d70fed9184c15f938860bbf2b19b4">
+      <midi-instrument id="I72d8b4e5f64604f1d66706fe62da3258">
         <midi-channel>1</midi-channel>
         <midi-program>1</midi-program>
       </midi-instrument>
     </score-part>
-    <score-part id="Pf720f162c9e78e45537f905c49e92b51">
+    <score-part id="P3c02f58721d2f0d458a551d06f79edba">
       <part-name>Bass</part-name>
       <part-abbreviation>Pno</part-abbreviation>
-      <score-instrument id="I7bbbf19b159e449e2240848812ebee51">
+      <score-instrument id="I634167958ed6179a511a02d5d99cc1c6">
         <instrument-name>Piano</instrument-name>
         <instrument-abbreviation>Pno</instrument-abbreviation>
       </score-instrument>
-      <midi-instrument id="I7bbbf19b159e449e2240848812ebee51">
+      <midi-instrument id="I634167958ed6179a511a02d5d99cc1c6">
         <midi-channel>2</midi-channel>
         <midi-program>1</midi-program>
       </midi-instrument>
     </score-part>
   </part-list>
   <!--=========================== Part 1 ===========================-->
-  <part id="P43249ce2e8bf8050aa70ea257d71154b">
+  <part id="P463ed44d4b2e5457db4e607ea5eec385">
     <!--========================= Measure 1 ==========================-->
     <measure implicit="no" number="1">
       <attributes>
@@ -199,7 +199,7 @@
     </measure>
   </part>
   <!--=========================== Part 2 ===========================-->
-  <part id="Pf720f162c9e78e45537f905c49e92b51">
+  <part id="P3c02f58721d2f0d458a551d06f79edba">
     <!--========================= Measure 1 ==========================-->
     <measure implicit="no" number="1">
       <attributes>

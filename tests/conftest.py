@@ -34,3 +34,23 @@ def autumn(tmp_path: Path) -> str:
 @pytest.fixture
 def barbershop(tmp_path: Path) -> str:
     return _copy("barbershop.musicxml", tmp_path)
+
+
+@pytest.fixture
+def bach(tmp_path: Path) -> str:
+    return _copy("bach_chorale.musicxml", tmp_path)
+
+
+@pytest.fixture
+def chopin(tmp_path: Path) -> str:
+    return _copy("chopin_prelude.musicxml", tmp_path)
+
+
+@pytest.fixture
+def polyrhythm(tmp_path: Path) -> str:
+    return _copy("polyrhythm.musicxml", tmp_path)
+
+
+@pytest.fixture
+def pop(tmp_path: Path) -> str:
+    return _copy("pop_ballad.musicxml", tmp_path)

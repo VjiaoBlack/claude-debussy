@@ -4,19 +4,24 @@ Run:
     python examples/gen_examples.py
 
 This writes:
-    examples/twinkle.musicxml        — 2-part nursery-rhyme smoke test
-    examples/autumn_leaves.musicxml  — 3-instrument jazz A-section (original)
-    examples/barbershop.musicxml     — 4-voice SATB with lyrics on all parts
-    examples/bach_chorale.musicxml   — real Bach BWV 66.6 from music21 corpus
-    examples/chopin_prelude.musicxml — original short prelude, dense dynamics
-    examples/polyrhythm.musicxml     — 3-against-4 tuplets for duration tests
-    examples/pop_ballad.musicxml     — original piano + vocal with lyrics
+    examples/twinkle.musicxml         — 2-part nursery-rhyme smoke test
+    examples/autumn_leaves.musicxml   — 3-instrument jazz A-section (original)
+    examples/barbershop.musicxml      — 4-voice SATB with lyrics on all parts
+    examples/bach_chorale.musicxml    — real Bach BWV 66.6 from music21 corpus
+    examples/chopin_prelude.musicxml  — original short prelude, dense dynamics
+    examples/polyrhythm.musicxml      — 3-against-4 tuplets for duration tests
+    examples/pop_ballad.musicxml      — original piano + vocal with lyrics
+    examples/multi_voice.musicxml     — 2 staves × 2 voices (keyboard SATB)
+    examples/structure_demo.musicxml  — AABA form with rehearsal marks,
+                                        repeats, 1st/2nd endings, Segno,
+                                        Coda, D.C., Fine, key/time changes
 """
 
 from fractions import Fraction
 from pathlib import Path
 
 from music21 import (
+    bar,
     chord,
     clef,
     corpus,
@@ -28,6 +33,8 @@ from music21 import (
     metadata,
     meter,
     note,
+    repeat,
+    spanner,
     stream,
     tempo,
 )
@@ -573,6 +580,167 @@ def pop_ballad() -> stream.Score:
 
 
 # ---------------------------------------------------------------------------
+# Multi-voice-per-staff — keyboard SATB reduction.
+#
+# Two staves (treble + bass), each containing two explicit voices.
+# Treble: Soprano = voice 1, Alto = voice 2
+# Bass:   Tenor   = voice 1, Bass = voice 2
+#
+# This is the "music21 stream.Voice inside stream.Measure" path that
+# `stream.Part`-per-instrument scores never exercise. It's also how
+# keyboard music is typically notated in real publications.
+# ---------------------------------------------------------------------------
+
+# (soprano, alto, tenor, bass) whole-note chord per measure — classic I-IV-V-I
+_SATB_PLAGAL = [
+    ("E5", "C5", "G4", "C3"),   # m.1  I   (C major)
+    ("F5", "C5", "A4", "F3"),   # m.2  IV  (F major)
+    ("D5", "B4", "G4", "G3"),   # m.3  V   (G major)
+    ("E5", "C5", "G4", "C3"),   # m.4  I   (C major)
+]
+
+
+def _make_staff(
+    part_name: str,
+    clef_obj,
+    upper_pitches: list[str],
+    lower_pitches: list[str],
+) -> stream.Part:
+    """Build one staff that contains two explicit voices per measure."""
+    p = stream.Part()
+    p.partName = part_name
+    p.insert(0, instrument.Piano())
+    p.insert(0, clef_obj)
+    p.insert(0, key.Key("C"))
+    p.insert(0, meter.TimeSignature("4/4"))
+
+    for i, (upper, lower) in enumerate(zip(upper_pitches, lower_pitches), start=1):
+        m = stream.Measure(number=i)
+        v1 = stream.Voice()
+        v1.id = "1"
+        v1.append(note.Note(upper, quarterLength=4))
+        v2 = stream.Voice()
+        v2.id = "2"
+        v2.append(note.Note(lower, quarterLength=4))
+        m.insert(0, v1)
+        m.insert(0, v2)
+        p.append(m)
+
+    return p
+
+
+def multi_voice() -> stream.Score:
+    s = stream.Score()
+    s.metadata = metadata.Metadata()
+    s.metadata.title = "SATB Keyboard Reduction (plagal cadence)"
+    s.metadata.composer = "original, for test fixture"
+
+    sopranos = [v[0] for v in _SATB_PLAGAL]
+    altos    = [v[1] for v in _SATB_PLAGAL]
+    tenors   = [v[2] for v in _SATB_PLAGAL]
+    basses   = [v[3] for v in _SATB_PLAGAL]
+
+    treble = _make_staff("Treble", clef.TrebleClef(), sopranos, altos)
+    # Put a tempo mark only on the top staff (standard engraving convention)
+    first_treble_measure = treble.getElementsByClass(stream.Measure).first()
+    first_treble_measure.insert(0, tempo.MetronomeMark(number=60, text="Adagio"))
+
+    bass_staff = _make_staff("Bass", clef.BassClef(), tenors, basses)
+
+    s.insert(0, treble)
+    s.insert(0, bass_staff)
+    return s
+
+
+# ---------------------------------------------------------------------------
+# Structure demo — 12-bar AABA-ish form exercising every code path in the
+# `debussy structure` view. Single part for simplicity.
+#
+# m.1   ||: whole note  (Rehearsal A, repeat-start)
+# m.2       whole note
+# m.3       whole note
+# m.4   [1. whole note  :||   (repeat-end, first ending)
+# m.5   [2. whole note        (second ending)
+# m.6       whole note  (Rehearsal B, key change G, tempo Allegro 132)
+# m.7       whole note
+# m.8       whole note  (Segno)
+# m.9       whole note  (time change 3/4, Rehearsal C)
+# m.10      whole note  (tempo rit.)
+# m.11      whole note  (Coda sign, D.S. al Coda expression)
+# m.12      whole note  (Fine, final barline)
+# ---------------------------------------------------------------------------
+
+
+def structure_demo() -> stream.Score:
+    s = stream.Score()
+    s.metadata = metadata.Metadata()
+    s.metadata.title = "Structure Demo (AABA with all markings)"
+    s.metadata.composer = "original, for test fixture"
+
+    p = stream.Part()
+    p.partName = "Melody"
+    p.insert(0, instrument.Piano())
+    p.insert(0, clef.TrebleClef())
+    p.insert(0, key.Key("C"))
+    p.insert(0, meter.TimeSignature("4/4"))
+    p.insert(0, tempo.MetronomeMark(number=72, text="Andante"))
+
+    # 12 measures of whole notes (pitch just climbs a C major scale)
+    pitches = ["C5", "D5", "E5", "F5", "G5", "A5",
+               "B5", "C6", "B5", "A5", "G5", "C5"]
+    measures: list[stream.Measure] = []
+    for i, pitch_name in enumerate(pitches, start=1):
+        m = stream.Measure(number=i)
+        m.append(note.Note(pitch_name, quarterLength=4))
+        p.append(m)
+        measures.append(m)
+
+    # Rehearsal marks
+    measures[0].insert(0, expressions.RehearsalMark("A"))
+    measures[5].insert(0, expressions.RehearsalMark("B"))
+    measures[8].insert(0, expressions.RehearsalMark("C"))
+
+    # Repeat bars
+    measures[0].leftBarline = bar.Repeat(direction="start")
+    measures[3].rightBarline = bar.Repeat(direction="end", times=2)
+
+    # First / second ending brackets
+    rb1 = spanner.RepeatBracket([measures[3]], number=1)
+    rb2 = spanner.RepeatBracket([measures[4]], number=2)
+    p.insert(0, rb1)
+    p.insert(0, rb2)
+
+    # Mid-piece modulation: G major from m.6 onward
+    measures[5].insert(0, key.KeySignature(1))  # one sharp = G major
+    measures[5].insert(0, tempo.MetronomeMark(number=132, text="Allegro"))
+
+    # Segno on m.8
+    measures[7].insert(0, repeat.Segno())
+
+    # Time signature change in m.9
+    measures[8].insert(0, meter.TimeSignature("3/4"))
+    # (we keep the whole-note as 3-beat in 3/4 — it becomes a dotted half
+    #  on write; that's fine, the content of the measure isn't what we test)
+    measures[8].notes[0].duration = duration.Duration(3)
+
+    measures[9].insert(0, expressions.TextExpression("rit."))
+    measures[9].notes[0].duration = duration.Duration(3)
+
+    # Coda sign + D.S. al Coda expression at m.11
+    measures[10].insert(0, repeat.Coda())
+    measures[10].notes[0].duration = duration.Duration(3)
+    measures[10].insert(3, repeat.DalSegno())
+
+    # Fine + final barline on m.12
+    measures[11].notes[0].duration = duration.Duration(3)
+    measures[11].insert(0, repeat.Fine())
+    measures[11].rightBarline = bar.Barline("final")
+
+    s.insert(0, p)
+    return s
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -586,6 +754,8 @@ if __name__ == "__main__":
         ("chopin_prelude", chopin_prelude),
         ("polyrhythm", polyrhythm),
         ("pop_ballad", pop_ballad),
+        ("multi_voice", multi_voice),
+        ("structure_demo", structure_demo),
     ]:
         s = builder()
         out = here / f"{name}.musicxml"

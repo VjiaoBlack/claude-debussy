@@ -209,3 +209,127 @@ class TestPopBallad:
         out = tmp_path / "pop.pdf"
         render.render(pop, fmt="pdf", out=str(out))
         assert out.read_bytes().startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Multi-voice-per-staff (two explicit stream.Voice objects per measure)
+# ---------------------------------------------------------------------------
+
+
+class TestMultiVoice:
+    def test_two_staves_each_with_two_voices(self, multi_voice: str) -> None:
+        s = load(multi_voice)
+        assert len(list(s.parts)) == 2
+        for p in s.parts:
+            for m in p.getElementsByClass(stream.Measure):
+                voices = list(m.getElementsByClass(stream.Voice))
+                assert len(voices) == 2, (
+                    f"{p.partName} m{m.number} has {len(voices)} voices, "
+                    f"expected 2"
+                )
+
+    def test_digest_shows_all_four_voice_lines(self, multi_voice: str) -> None:
+        out = views.digest(multi_voice, measure_range=(1, 1))
+        # Each measure should produce 4 voice lines: v1/v2 × 2 staves
+        voice_lines = [ln for ln in out.splitlines() if ln.strip().startswith("v")]
+        assert len(voice_lines) == 4
+        # Staff names appear with their voice indices
+        assert any("v1 (Treble)" in ln for ln in voice_lines)
+        assert any("v2 (Treble)" in ln for ln in voice_lines)
+        assert any("v1 (Bass)" in ln for ln in voice_lines)
+        assert any("v2 (Bass)" in ln for ln in voice_lines)
+
+    def test_set_note_voice_2_targets_alto_not_soprano(
+        self, multi_voice: str
+    ) -> None:
+        """The critical multi-voice test: --voice 2 must NOT hit the soprano.
+
+        m.1 starts with Soprano=E5 (v1), Alto=C5 (v2). Changing voice 2 to A4
+        should leave the E5 alone and replace the C5.
+        """
+        from debussy import ops
+        ops.set_note(
+            multi_voice,
+            measure=1,
+            beat=1,
+            new_pitch="A4",
+            part=1,
+            voice=2,
+        )
+        s = load(multi_voice)
+        treble_m1 = list(s.parts)[0].measure(1)
+        voices = list(treble_m1.getElementsByClass(stream.Voice))
+        v1_first = next(
+            n for n in voices[0].notesAndRests if isinstance(n, note.Note)
+        )
+        v2_first = next(
+            n for n in voices[1].notesAndRests if isinstance(n, note.Note)
+        )
+        assert v1_first.pitch.nameWithOctave == "E5", "soprano should be untouched"
+        assert v2_first.pitch.nameWithOctave == "A4", "alto should be the new pitch"
+
+    def test_multi_voice_renders_pdf(
+        self, multi_voice: str, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "mv.pdf"
+        render.render(multi_voice, fmt="pdf", out=str(out))
+        assert out.read_bytes().startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Structure demo (rehearsal marks, repeats, endings, D.S./Coda/Fine, key/time
+# changes)
+# ---------------------------------------------------------------------------
+
+
+class TestStructureDemo:
+    def test_all_three_rehearsal_marks_reported(
+        self, structure_demo: str
+    ) -> None:
+        out = views.structure(structure_demo)
+        assert "m.1: A" in out
+        assert "m.6: B" in out
+        assert "m.9: C" in out
+
+    def test_repeat_start_and_end_reported(self, structure_demo: str) -> None:
+        out = views.structure(structure_demo)
+        assert "m.1: start" in out
+        # The end repeat is at m.4 with times=2
+        assert "m.4: end" in out
+
+    def test_first_and_second_endings_reported(
+        self, structure_demo: str
+    ) -> None:
+        out = views.structure(structure_demo)
+        assert "endings:" in out
+        assert "[1.]" in out
+        assert "[2.]" in out
+
+    def test_segno_coda_ds_fine_all_reported(
+        self, structure_demo: str
+    ) -> None:
+        out = views.structure(structure_demo)
+        for marker in ("Segno", "Coda", "D.S.", "Fine"):
+            assert marker in out, f"{marker} missing from structure view"
+
+    def test_key_change_mid_piece(self, structure_demo: str) -> None:
+        out = views.structure(structure_demo)
+        assert "m.1: +0 sharps" in out  # start in C
+        assert "m.6: +1 sharps" in out  # modulate to G at m.6
+
+    def test_time_change_mid_piece(self, structure_demo: str) -> None:
+        out = views.structure(structure_demo)
+        assert "m.1: 4/4" in out
+        assert "m.9: 3/4" in out
+
+    def test_tempo_change_mid_piece(self, structure_demo: str) -> None:
+        out = views.structure(structure_demo)
+        assert "tempo changes:" in out
+        assert "132" in out  # Allegro ♩=132 at m.6
+
+    def test_structure_renders_pdf(
+        self, structure_demo: str, tmp_path: Path
+    ) -> None:
+        out = tmp_path / "structure.pdf"
+        render.render(structure_demo, fmt="pdf", out=str(out))
+        assert out.read_bytes().startswith(b"%PDF")

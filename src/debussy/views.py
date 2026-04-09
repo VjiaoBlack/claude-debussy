@@ -183,10 +183,11 @@ def _render_elements(elements: Iterable) -> str:
 
 def structure(path: str) -> str:
     score = load(path)
+    from music21 import bar, expressions, repeat, spanner
+
     lines = ["# structure"]
 
     # Rehearsal marks
-    from music21 import expressions, repeat
     marks = list(score.flatten().getElementsByClass(expressions.RehearsalMark))
     if marks:
         lines.append("rehearsal marks:")
@@ -194,14 +195,47 @@ def structure(path: str) -> str:
             mm = _measure_of(m)
             lines.append(f"  m.{mm}: {m.content}")
 
-    # Repeats / endings / barlines
-    from music21 import bar
-    repeats = [b for b in score.flatten().getElementsByClass(bar.Repeat)]
-    if repeats:
+    # Bar repeats (||: and :||)
+    bar_repeats = list(score.flatten().getElementsByClass(bar.Repeat))
+    if bar_repeats:
         lines.append("repeats:")
-        for r in repeats:
+        for r in bar_repeats:
             mm = _measure_of(r)
-            lines.append(f"  m.{mm}: {r.direction}")
+            times = getattr(r, "times", None)
+            extra = f" (x{times})" if times and r.direction == "end" else ""
+            lines.append(f"  m.{mm}: {r.direction}{extra}")
+
+    # Repeat brackets (1st / 2nd endings)
+    brackets = list(score.recurse().getElementsByClass(spanner.RepeatBracket))
+    if brackets:
+        lines.append("endings:")
+        for rb in brackets:
+            spanned = list(rb.getSpannedElements())
+            if not spanned:
+                continue
+            first_m = spanned[0].number if hasattr(spanned[0], "number") else "?"
+            last_m = spanned[-1].number if hasattr(spanned[-1], "number") else "?"
+            span = f"m.{first_m}" if first_m == last_m else f"m.{first_m}-{last_m}"
+            lines.append(f"  {span}: [{rb.number}.]")
+
+    # Jump markings: Segno, Coda, D.C., D.S., Fine
+    _jump_pairs: list[tuple[type, str]] = [
+        (repeat.Segno, "Segno"),
+        (repeat.Coda, "Coda"),
+        (repeat.DaCapo, "D.C."),
+        (repeat.DalSegno, "D.S."),
+        (repeat.Fine, "Fine"),
+    ]
+    jumps: list[tuple[int, str]] = []
+    for cls, label in _jump_pairs:
+        for el in score.flatten().getElementsByClass(cls):
+            mm = _measure_of(el)
+            jumps.append((mm if isinstance(mm, int) else -1, label))
+    if jumps:
+        lines.append("jumps / marks:")
+        for mm, label in jumps:
+            loc = f"m.{mm}" if mm >= 0 else "m.?"
+            lines.append(f"  {loc}: {label}")
 
     # Tempo changes
     tempi = list(score.flatten().getElementsByClass(tempo.MetronomeMark))
@@ -212,21 +246,37 @@ def structure(path: str) -> str:
             num = t.number if t.number else "?"
             lines.append(f"  m.{mm}: {t.text or ''} ♩={num}")
 
-    # Key signatures
+    # Key signatures (dedupe consecutive identical sig on the same measure)
     keysigs = list(score.flatten().getElementsByClass(key.KeySignature))
     if keysigs:
-        lines.append("key signatures:")
+        seen: set[tuple] = set()
+        key_lines: list[str] = []
         for k in keysigs:
             mm = _measure_of(k)
-            lines.append(f"  m.{mm}: {k.sharps:+d} sharps")
+            entry = (mm, k.sharps)
+            if entry in seen:
+                continue
+            seen.add(entry)
+            key_lines.append(f"  m.{mm}: {k.sharps:+d} sharps")
+        if key_lines:
+            lines.append("key signatures:")
+            lines.extend(key_lines)
 
-    # Time signatures
+    # Time signatures (also deduped)
     tsigs = list(score.flatten().getElementsByClass(meter.TimeSignature))
     if tsigs:
-        lines.append("time signatures:")
+        seen_ts: set[tuple] = set()
+        ts_lines: list[str] = []
         for t in tsigs:
             mm = _measure_of(t)
-            lines.append(f"  m.{mm}: {t.ratioString}")
+            entry = (mm, t.ratioString)
+            if entry in seen_ts:
+                continue
+            seen_ts.add(entry)
+            ts_lines.append(f"  m.{mm}: {t.ratioString}")
+        if ts_lines:
+            lines.append("time signatures:")
+            lines.extend(ts_lines)
 
     if len(lines) == 1:
         lines.append("(no structural markings found)")

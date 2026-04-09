@@ -54,3 +54,13 @@ def polyrhythm(tmp_path: Path) -> str:
 @pytest.fixture
 def pop(tmp_path: Path) -> str:
     return _copy("pop_ballad.musicxml", tmp_path)
+
+
+@pytest.fixture
+def multi_voice(tmp_path: Path) -> str:
+    return _copy("multi_voice.musicxml", tmp_path)
+
+
+@pytest.fixture
+def structure_demo(tmp_path: Path) -> str:
+    return _copy("structure_demo.musicxml", tmp_path)

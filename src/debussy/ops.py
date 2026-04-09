@@ -9,7 +9,19 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Iterable
 
-from music21 import chord, duration, interval, note, pitch, stream
+from music21 import (
+    articulations as m21articulations,
+    chord,
+    dynamics as m21dynamics,
+    duration,
+    expressions,
+    interval,
+    note,
+    pitch,
+    spanner,
+    stream,
+    tempo as m21tempo,
+)
 
 from debussy.score_io import load, parse_pitch, save
 
@@ -323,3 +335,311 @@ def apply_script(path: str, script_path: str, *, out: str | None = None) -> str:
     exec(compile(source, script_path, "exec"), ns)
     save(ns["score"], out or path)
     return f"applied {script_path}"
+
+
+# ===========================================================================
+# vibe edits — expressive markings that don't change pitches
+# ===========================================================================
+
+# Accepted dynamic tokens. music21 can take any string and parses it, but we
+# give a curated list so Claude doesn't invent non-standard markings.
+DYNAMIC_TOKENS = {
+    "pppp", "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff", "ffff",
+    "fp", "sf", "sfz", "sfp", "fz", "rfz",
+}
+
+ARTICULATION_TOKENS = {
+    "staccato": m21articulations.Staccato,
+    "staccatissimo": m21articulations.Staccatissimo,
+    "accent": m21articulations.Accent,
+    "marcato": m21articulations.StrongAccent,
+    "tenuto": m21articulations.Tenuto,
+    "fermata": expressions.Fermata,   # technically an expression
+    "stress": m21articulations.Stress,
+    "detachedlegato": m21articulations.DetachedLegato,
+}
+
+
+def add_dynamic(
+    path: str,
+    measure: int,
+    beat: float,
+    marking: str,
+    *,
+    part: int = 1,
+    out: str | None = None,
+) -> str:
+    """Insert a dynamic marking (e.g. p, mf, ff) at a beat position."""
+    marking = marking.strip()
+    if marking not in DYNAMIC_TOKENS:
+        raise ValueError(
+            f"unknown dynamic {marking!r}; pick from {sorted(DYNAMIC_TOKENS)}"
+        )
+    score = load(path)
+    m = _get_measure(score, part, measure)
+    dyn = m21dynamics.Dynamic(marking)
+    m.insert(float(Fraction(beat) - 1), dyn)
+    save(score, out or path)
+    return f"m{measure} @{beat} part{part}: dynamic {marking}"
+
+
+def add_articulation(
+    path: str,
+    measure: int,
+    beat: float,
+    kind: str,
+    *,
+    part: int = 1,
+    voice: int = 1,
+    out: str | None = None,
+) -> str:
+    """Attach an articulation (staccato, accent, etc.) to the note at a beat."""
+    kind = kind.strip().lower()
+    if kind not in ARTICULATION_TOKENS:
+        raise ValueError(
+            f"unknown articulation {kind!r}; pick from {sorted(ARTICULATION_TOKENS)}"
+        )
+    score = load(path)
+    m = _get_measure(score, part, measure)
+    v = _get_voice(m, voice)
+    el = _find_at_beat(v, beat)
+    if not isinstance(el, (note.Note, chord.Chord)):
+        raise ValueError(f"can't articulate a {type(el).__name__} at beat {beat}")
+    cls = ARTICULATION_TOKENS[kind]
+    if kind == "fermata":
+        el.expressions.append(cls())
+    else:
+        el.articulations.append(cls())
+    save(score, out or path)
+    return f"m{measure} v{voice} @{beat}: {kind}"
+
+
+def add_tempo_mark(
+    path: str,
+    measure: int,
+    *,
+    bpm: float | None = None,
+    text: str | None = None,
+    beat: float = 1.0,
+    out: str | None = None,
+) -> str:
+    """Add or replace a metronome / tempo marking at the start of a measure."""
+    if bpm is None and text is None:
+        raise ValueError("pass --bpm and/or --text")
+    score = load(path)
+    # Tempo marks sit on the first part.
+    m = _get_measure(score, 1, measure)
+    mm = m21tempo.MetronomeMark(number=bpm, text=text)
+    # Remove any existing tempo mark at the same offset
+    existing = [
+        t for t in m.getElementsByClass(m21tempo.TempoIndication)
+        if abs(float(t.offset) - float(Fraction(beat) - 1)) < 1e-6
+    ]
+    for t in existing:
+        m.remove(t)
+    m.insert(float(Fraction(beat) - 1), mm)
+    save(score, out or path)
+    return f"m{measure} @{beat}: tempo {text or ''} {bpm or ''}".strip()
+
+
+def add_text_expression(
+    path: str,
+    measure: int,
+    beat: float,
+    text: str,
+    *,
+    part: int = 1,
+    out: str | None = None,
+) -> str:
+    """Add a free-form text expression (rit., dolce, espr., etc.)."""
+    score = load(path)
+    m = _get_measure(score, part, measure)
+    te = expressions.TextExpression(text)
+    m.insert(float(Fraction(beat) - 1), te)
+    save(score, out or path)
+    return f'm{measure} @{beat} part{part}: text "{text}"'
+
+
+def add_slur(
+    path: str,
+    from_measure: int,
+    from_beat: float,
+    to_measure: int,
+    to_beat: float,
+    *,
+    part: int = 1,
+    voice: int = 1,
+    out: str | None = None,
+) -> str:
+    """Add a slur spanning from one note to another."""
+    score = load(path)
+    m_from = _get_measure(score, part, from_measure)
+    v_from = _get_voice(m_from, voice)
+    n_from = _find_at_beat(v_from, from_beat)
+    m_to = _get_measure(score, part, to_measure)
+    v_to = _get_voice(m_to, voice)
+    n_to = _find_at_beat(v_to, to_beat)
+    if not isinstance(n_from, (note.Note, chord.Chord)):
+        raise ValueError(f"from-note at m{from_measure}@{from_beat} isn't a note")
+    if not isinstance(n_to, (note.Note, chord.Chord)):
+        raise ValueError(f"to-note at m{to_measure}@{to_beat} isn't a note")
+    sl = spanner.Slur([n_from, n_to])
+    list(score.parts)[part - 1].insert(0, sl)
+    save(score, out or path)
+    return f"slur m{from_measure}@{from_beat} → m{to_measure}@{to_beat} part{part}"
+
+
+def add_hairpin(
+    path: str,
+    kind: str,
+    from_measure: int,
+    from_beat: float,
+    to_measure: int,
+    to_beat: float,
+    *,
+    part: int = 1,
+    voice: int = 1,
+    out: str | None = None,
+) -> str:
+    """Add a crescendo or decrescendo hairpin between two notes."""
+    kind = kind.strip().lower()
+    if kind in ("cresc", "crescendo", "<"):
+        cls = m21dynamics.Crescendo
+    elif kind in ("dim", "decresc", "decrescendo", "diminuendo", ">"):
+        cls = m21dynamics.Diminuendo
+    else:
+        raise ValueError(f"unknown hairpin kind {kind!r}; use cresc|dim")
+    score = load(path)
+    m_from = _get_measure(score, part, from_measure)
+    n_from = _find_at_beat(_get_voice(m_from, voice), from_beat)
+    m_to = _get_measure(score, part, to_measure)
+    n_to = _find_at_beat(_get_voice(m_to, voice), to_beat)
+    hp = cls([n_from, n_to])
+    list(score.parts)[part - 1].insert(0, hp)
+    save(score, out or path)
+    kind_label = "crescendo" if cls is m21dynamics.Crescendo else "diminuendo"
+    return (
+        f"{kind_label} m{from_measure}@{from_beat} → m{to_measure}@{to_beat} "
+        f"part{part}"
+    )
+
+
+# ===========================================================================
+# lyrics
+# ===========================================================================
+
+
+def _split_lyric(text: str) -> list[tuple[str, str]]:
+    """Tokenise a lyric string into (syllable, syllabic) pairs.
+
+    Hyphens split a word across notes; underscores extend the previous syllable
+    as a melisma across the next note without a new word. Examples:
+
+        "Twinkle twinkle little star"       → four simple syllables
+        "Hal-le-lu-jah"                     → four syllables, hyphen syllabic
+        "Al_le_lu_ia"                       → one word with melisma holds
+        "Ave Ma-ri-a gra-ti-a ple-na"       → mixed
+    """
+    tokens: list[tuple[str, str]] = []
+    for word in text.split():
+        if "-" not in word and "_" not in word:
+            tokens.append((word, "single"))
+            continue
+        parts = []
+        buf = ""
+        for ch in word:
+            if ch in "-_":
+                parts.append((buf, ch))
+                buf = ""
+            else:
+                buf += ch
+        parts.append((buf, "end"))
+        # assign syllabic labels
+        for i, (syl, delim) in enumerate(parts):
+            if not syl and delim == "end":
+                # trailing underscore/hyphen — represent as a continuation
+                tokens.append(("", "middle"))
+                continue
+            if i == 0 and delim in ("-", "_"):
+                tokens.append((syl, "begin"))
+            elif i == len(parts) - 1 and delim == "end":
+                tokens.append((syl, "end"))
+            else:
+                tokens.append((syl, "middle"))
+    return tokens
+
+
+def set_lyrics(
+    path: str,
+    measure_range: tuple[int, int],
+    text: str,
+    *,
+    part: int = 1,
+    voice: int = 1,
+    verse: int = 1,
+    out: str | None = None,
+) -> str:
+    """Attach lyrics from `text` to successive notes in the measure range.
+
+    Hyphens split a word across notes; spaces advance to the next word.
+    Rests are skipped. Extra syllables beyond the available notes are dropped
+    (with a warning returned in the message).
+    """
+    score = load(path)
+    lo, hi = measure_range
+    p = list(score.parts)[part - 1]
+    # Collect notes in order from the target voice across the measure range
+    target_notes = []
+    for m in p.getElementsByClass(stream.Measure):
+        if m.number is None or not (lo <= m.number <= hi):
+            continue
+        v = _get_voice(m, voice)
+        for el in v.notesAndRests:
+            if isinstance(el, (note.Note, chord.Chord)):
+                target_notes.append(el)
+    syllables = _split_lyric(text)
+    attached = 0
+    for n, (syl, syllabic) in zip(target_notes, syllables):
+        if not syl and syllabic == "middle":
+            continue  # melisma hold — don't overwrite
+        ly = note.Lyric(text=syl, number=verse, syllabic=syllabic)
+        # clear previous verse-N lyric and append
+        n.lyrics = [lr for lr in n.lyrics if lr.number != verse]
+        n.lyrics.append(ly)
+        attached += 1
+    save(score, out or path)
+    extra = len(syllables) - attached
+    tail = f" ({extra} extra syllables dropped)" if extra > 0 else ""
+    return f"lyrics part{part} v{voice} m{lo}-{hi}: {attached} syllables attached{tail}"
+
+
+def clear_lyrics(
+    path: str,
+    measure_range: tuple[int, int],
+    *,
+    part: int = 1,
+    voice: int = 1,
+    verse: int | None = None,
+    out: str | None = None,
+) -> str:
+    """Remove lyrics from notes in a measure range (all verses or just one)."""
+    score = load(path)
+    lo, hi = measure_range
+    p = list(score.parts)[part - 1]
+    removed = 0
+    for m in p.getElementsByClass(stream.Measure):
+        if m.number is None or not (lo <= m.number <= hi):
+            continue
+        v = _get_voice(m, voice)
+        for el in v.notesAndRests:
+            if not isinstance(el, (note.Note, chord.Chord)):
+                continue
+            if verse is None:
+                removed += len(el.lyrics)
+                el.lyrics = []
+            else:
+                before = len(el.lyrics)
+                el.lyrics = [lr for lr in el.lyrics if lr.number != verse]
+                removed += before - len(el.lyrics)
+    save(score, out or path)
+    return f"cleared {removed} lyric syllables in m{lo}-{hi}"

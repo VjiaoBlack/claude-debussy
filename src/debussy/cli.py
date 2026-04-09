@@ -103,11 +103,98 @@ def build_parser() -> argparse.ArgumentParser:
     p_ap.add_argument("script")
     p_ap.add_argument("--out", default=None)
 
+    # --- vibe edits ---
+    p_dyn = sub.add_parser("dynamic", help="add a dynamic marking (p, mf, ff, …)")
+    p_dyn.add_argument("file")
+    p_dyn.add_argument("--measure", type=int, required=True)
+    p_dyn.add_argument("--beat", type=float, default=1.0)
+    p_dyn.add_argument("--marking", required=True,
+                       help="e.g. pp, p, mf, f, ff, sfz")
+    p_dyn.add_argument("--part", type=int, default=1)
+    p_dyn.add_argument("--out", default=None)
+
+    p_art = sub.add_parser("articulation", help="add staccato / accent / tenuto / fermata …")
+    p_art.add_argument("file")
+    p_art.add_argument("--measure", type=int, required=True)
+    p_art.add_argument("--beat", type=float, required=True)
+    p_art.add_argument("--kind", required=True,
+                       help="staccato, accent, tenuto, marcato, fermata, staccatissimo, stress, detachedlegato")
+    p_art.add_argument("--part", type=int, default=1)
+    p_art.add_argument("--voice", type=int, default=1)
+    p_art.add_argument("--out", default=None)
+
+    p_tempo = sub.add_parser("tempo", help="set a tempo / metronome marking")
+    p_tempo.add_argument("file")
+    p_tempo.add_argument("--measure", type=int, required=True)
+    p_tempo.add_argument("--beat", type=float, default=1.0)
+    p_tempo.add_argument("--bpm", type=float, default=None)
+    p_tempo.add_argument("--text", default=None,
+                         help='e.g. "Andante", "Allegro", "rit."')
+    p_tempo.add_argument("--out", default=None)
+
+    p_text = sub.add_parser("text", help="add a text expression (rit., dolce, espr. …)")
+    p_text.add_argument("file")
+    p_text.add_argument("--measure", type=int, required=True)
+    p_text.add_argument("--beat", type=float, default=1.0)
+    p_text.add_argument("--text", required=True)
+    p_text.add_argument("--part", type=int, default=1)
+    p_text.add_argument("--out", default=None)
+
+    p_sl = sub.add_parser("slur", help="add a slur between two notes")
+    p_sl.add_argument("file")
+    p_sl.add_argument("--from-measure", type=int, required=True, dest="from_measure")
+    p_sl.add_argument("--from-beat", type=float, required=True, dest="from_beat")
+    p_sl.add_argument("--to-measure", type=int, required=True, dest="to_measure")
+    p_sl.add_argument("--to-beat", type=float, required=True, dest="to_beat")
+    p_sl.add_argument("--part", type=int, default=1)
+    p_sl.add_argument("--voice", type=int, default=1)
+    p_sl.add_argument("--out", default=None)
+
+    p_hp = sub.add_parser("hairpin", help="add a crescendo or diminuendo")
+    p_hp.add_argument("file")
+    p_hp.add_argument("--kind", required=True, help="cresc | dim")
+    p_hp.add_argument("--from-measure", type=int, required=True, dest="from_measure")
+    p_hp.add_argument("--from-beat", type=float, required=True, dest="from_beat")
+    p_hp.add_argument("--to-measure", type=int, required=True, dest="to_measure")
+    p_hp.add_argument("--to-beat", type=float, required=True, dest="to_beat")
+    p_hp.add_argument("--part", type=int, default=1)
+    p_hp.add_argument("--voice", type=int, default=1)
+    p_hp.add_argument("--out", default=None)
+
+    # --- lyrics ---
+    p_ly = sub.add_parser("lyrics", help="attach lyrics to notes in a measure range")
+    p_ly.add_argument("file")
+    p_ly.add_argument("--measures", type=_measure_range, required=True)
+    p_ly.add_argument("--text", required=True,
+                      help='word list; use hyphens to split a word across notes: "Hal-le-lu-jah Twin-kle twin-kle"')
+    p_ly.add_argument("--part", type=int, default=1)
+    p_ly.add_argument("--voice", type=int, default=1)
+    p_ly.add_argument("--verse", type=int, default=1)
+    p_ly.add_argument("--out", default=None)
+
+    p_lyc = sub.add_parser("clear-lyrics", help="remove lyrics from a measure range")
+    p_lyc.add_argument("file")
+    p_lyc.add_argument("--measures", type=_measure_range, required=True)
+    p_lyc.add_argument("--part", type=int, default=1)
+    p_lyc.add_argument("--voice", type=int, default=1)
+    p_lyc.add_argument("--verse", type=int, default=None,
+                       help="only clear this verse number (default: all)")
+    p_lyc.add_argument("--out", default=None)
+
+    # --- import / transcribe ---
+    p_im2 = sub.add_parser("import", help="convert MIDI/ABC/Humdrum/MEI → MusicXML")
+    p_im2.add_argument("file")
+    p_im2.add_argument("--out", default=None)
+
+    p_tx = sub.add_parser("transcribe", help="transcribe audio (wav/mp3) → MusicXML (optional basic-pitch)")
+    p_tx.add_argument("file")
+    p_tx.add_argument("--out", default=None)
+
     # --- render & preview ---
     p_rn = sub.add_parser("render", help="render to midi / musicxml / pdf / png / lily")
     p_rn.add_argument("file")
     p_rn.add_argument("--format", default="midi",
-                      choices=["midi", "musicxml", "pdf", "png", "lily"])
+                      choices=["midi", "musicxml", "pdf", "png", "svg", "lily"])
     p_rn.add_argument("--out", default=None)
 
     p_pv = sub.add_parser("preview", help="live-reload web preview (verovio)")
@@ -190,6 +277,74 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "apply":
             from debussy.ops import apply_script
             print(apply_script(args.file, args.script, out=args.out))
+
+        elif args.cmd == "dynamic":
+            from debussy.ops import add_dynamic
+            print(add_dynamic(
+                args.file, args.measure, args.beat, args.marking,
+                part=args.part, out=args.out,
+            ))
+
+        elif args.cmd == "articulation":
+            from debussy.ops import add_articulation
+            print(add_articulation(
+                args.file, args.measure, args.beat, args.kind,
+                part=args.part, voice=args.voice, out=args.out,
+            ))
+
+        elif args.cmd == "tempo":
+            from debussy.ops import add_tempo_mark
+            print(add_tempo_mark(
+                args.file, args.measure,
+                bpm=args.bpm, text=args.text, beat=args.beat, out=args.out,
+            ))
+
+        elif args.cmd == "text":
+            from debussy.ops import add_text_expression
+            print(add_text_expression(
+                args.file, args.measure, args.beat, args.text,
+                part=args.part, out=args.out,
+            ))
+
+        elif args.cmd == "slur":
+            from debussy.ops import add_slur
+            print(add_slur(
+                args.file,
+                args.from_measure, args.from_beat,
+                args.to_measure, args.to_beat,
+                part=args.part, voice=args.voice, out=args.out,
+            ))
+
+        elif args.cmd == "hairpin":
+            from debussy.ops import add_hairpin
+            print(add_hairpin(
+                args.file, args.kind,
+                args.from_measure, args.from_beat,
+                args.to_measure, args.to_beat,
+                part=args.part, voice=args.voice, out=args.out,
+            ))
+
+        elif args.cmd == "lyrics":
+            from debussy.ops import set_lyrics
+            print(set_lyrics(
+                args.file, args.measures, args.text,
+                part=args.part, voice=args.voice, verse=args.verse, out=args.out,
+            ))
+
+        elif args.cmd == "clear-lyrics":
+            from debussy.ops import clear_lyrics
+            print(clear_lyrics(
+                args.file, args.measures,
+                part=args.part, voice=args.voice, verse=args.verse, out=args.out,
+            ))
+
+        elif args.cmd == "import":
+            from debussy.importers import import_file
+            print(import_file(args.file, out=args.out))
+
+        elif args.cmd == "transcribe":
+            from debussy.importers import transcribe_audio
+            print(transcribe_audio(args.file, out=args.out))
 
         elif args.cmd == "render":
             from debussy.render import render

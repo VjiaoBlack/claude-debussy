@@ -28,11 +28,21 @@ Claude Code how and when to use the tool.
 ```bash
 # from the repo root
 pip install -e .
+
+# optional: audio transcription (pulls ~1 GB of tensorflow via basic-pitch)
+pip install -e '.[transcribe]'
 ```
 
-This installs the `debussy` command. It pulls in `music21` as its only hard
-dependency. Rendering PDFs or PNGs additionally requires `lilypond` or
-`musescore` on the PATH, but the built-in browser preview needs nothing extra.
+The base install pulls:
+
+- `music21` — parsing, analysis, MusicXML I/O
+- `verovio` (Python binding) — renders SVG, MIDI, and multi-page PDF. No
+  LilyPond or MuseScore required.
+- `cairosvg` + `pypdf` — stitch Verovio SVG pages into a single PDF file
+
+The built-in preview server renders with Verovio entirely on the backend, so
+the browser doesn't need any wasm runtime. The optional `transcribe` extra
+adds Spotify's `basic-pitch` for audio → MusicXML conversion.
 
 ## Quick tour
 
@@ -93,7 +103,7 @@ debussy preview examples/twinkle.musicxml
 | `debussy chords FILE [--measures A-B] [--per-measure]` | Roman-numeral chord analysis |
 | `debussy progression FILE` | one-line Roman-numeral summary |
 
-### Ops
+### Note-level ops
 
 | command | purpose |
 |---|---|
@@ -105,12 +115,39 @@ debussy preview examples/twinkle.musicxml
 | `debussy delete-measures FILE --range A-B` | remove a measure range |
 | `debussy apply FILE SCRIPT.py` | run an arbitrary music21 python snippet with `score` in scope — escape hatch for anything the CLI doesn't cover |
 
+### Vibe edits
+
+Expressive markings that shape feel without changing pitches:
+
+| command | purpose |
+|---|---|
+| `debussy dynamic FILE --measure N --beat B --marking p` | `pp p mp mf f ff fff fp sf sfz` |
+| `debussy articulation FILE --measure N --beat B --kind staccato` | `staccato / staccatissimo / accent / marcato / tenuto / fermata / stress / detachedlegato` |
+| `debussy tempo FILE --measure N --bpm 96 --text "Andante"` | tempo / metronome marking |
+| `debussy text FILE --measure N --beat B --text "rit."` | free-form text expression |
+| `debussy slur FILE --from-measure M1 --from-beat B1 --to-measure M2 --to-beat B2` | add a slur |
+| `debussy hairpin FILE --kind cresc\|dim --from-measure … --from-beat … --to-measure … --to-beat …` | crescendo / diminuendo hairpin |
+
+### Lyrics
+
+| command | purpose |
+|---|---|
+| `debussy lyrics FILE --measures A-B --text "Twin-kle twin-kle lit-tle star"` | attach syllables to successive notes; spaces split words, hyphens split a word across notes. Supports `--verse N` for multi-verse. |
+| `debussy clear-lyrics FILE --measures A-B [--verse N]` | remove lyrics from a range |
+
+### Import / transcribe
+
+| command | purpose |
+|---|---|
+| `debussy import FILE` | convert MIDI / ABC / Humdrum / MEI → MusicXML (via music21) |
+| `debussy transcribe FILE.wav` | audio → MusicXML, via Spotify's `basic-pitch` (optional extra). Prints an install hint instead of failing when the extra isn't present. |
+
 ### Render & preview
 
 | command | purpose |
 |---|---|
-| `debussy render FILE --format midi\|musicxml\|pdf\|png\|lily [--out OUT]` | write the score in another format |
-| `debussy preview FILE [--port 8765]` | local live-reload preview using Verovio (no install) |
+| `debussy render FILE --format midi\|musicxml\|pdf\|png\|svg\|lily` | write the score in another format. PDF/PNG/SVG use the bundled Verovio Python binding — no LilyPond required. |
+| `debussy preview FILE [--port 8765]` | local live-reload HTTP server: Verovio rendering, MIDI playback, zoom, "Save as PDF" button. Auto-opens the browser. Auto-reloads on every `debussy` op. |
 
 ## Digest notation
 
@@ -147,8 +184,9 @@ claude-debussy/
 │   ├── score_io.py     # load / save + digest formatting primitives
 │   ├── views.py        # info / digest / structure
 │   ├── analyze.py      # key / chords / progression
-│   ├── ops.py          # set-note, transpose, replace-measure, …
-│   ├── render.py       # midi / musicxml / pdf (via lilypond or musescore)
+│   ├── ops.py          # note-level + vibe edits + lyrics
+│   ├── importers.py    # midi/abc/humdrum → musicxml + optional audio transcribe
+│   ├── render.py       # midi / musicxml / pdf / png / svg (via verovio)
 │   └── preview.py      # stdlib HTTP + SSE + Verovio live-reload server
 ├── examples/
 │   ├── gen_examples.py  # writes twinkle.musicxml

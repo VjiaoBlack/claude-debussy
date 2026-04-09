@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "debussy"
+version = "0.1.0"
+description = "Agentic harness for Claude Code to read, reason about, edit, and render MusicXML scores."
+requires-python = ">=3.10"
+dependencies = [
+    "music21>=9.0",
+]
+
+[project.scripts]
+debussy = "debussy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
